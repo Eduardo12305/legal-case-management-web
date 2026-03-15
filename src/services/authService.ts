@@ -1,9 +1,30 @@
+import axios from 'axios'
 import http from './http'
 
 const authService = {
   login: async (payload) => {
-    const { data } = await http.post('/api/auth/login', payload)
-    return data
+    const response = await axios.post('/api/auth/login', payload, {
+      baseURL: http.defaults.baseURL,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      validateStatus: () => true,
+    })
+
+    if (response?.data?.requiresPasswordChange) {
+      return response.data
+    }
+
+    if (response.status >= 400) {
+      const message =
+        response?.data?.message ||
+        response?.data?.error ||
+        'Nao foi possivel concluir o acesso.'
+
+      throw new Error(message)
+    }
+
+    return response.data
   },
 
   createInvite: async (payload) => {
