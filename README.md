@@ -61,3 +61,19 @@ Isso e importante para links como:
 - `/processes/123`
 
 Sem esse fallback, a aplicacao funciona ao navegar internamente, mas pode falhar ao atualizar a pagina direto em uma rota.
+
+## Hosting estatico
+
+Se a plataforma pedir:
+
+- comando de construcao: `npm run build`
+- diretorio de saida: `dist`
+- gerenciador de pacotes: `npm`
+
+entao ela esta publicando o frontend como SPA estatica.
+
+Nesse caso, o fallback das rotas do React deve ser feito pelo arquivo:
+
+- `public/.htaccess`
+
+Esse arquivo vai para o build final e redireciona rotas como `/chat` e `/processes/123` para `index.html`.
