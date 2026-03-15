@@ -51,6 +51,11 @@ const authService = {
     const { data } = await http.put('/api/users/change-password', payload)
     return data
   },
+
+  changeFirstAccessPassword: async (payload) => {
+    const { data } = await http.post('/api/auth/first-access/change-password', payload)
+    return data
+  },
 }
 
 export default authService

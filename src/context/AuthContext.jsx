@@ -8,8 +8,20 @@ function normalizeRole(role) {
   return typeof role === 'string' ? role.toUpperCase() : ''
 }
 
+function extractToken(payload) {
+  return (
+    payload?.token ||
+    payload?.accessToken ||
+    payload?.jwt ||
+    payload?.data?.token ||
+    payload?.data?.accessToken ||
+    payload?.data?.jwt ||
+    null
+  )
+}
+
 function buildSession(payload) {
-  const token = payload?.token || payload?.accessToken || payload?.jwt || null
+  const token = extractToken(payload)
   const user = payload?.user || payload?.profile || payload?.data?.user || null
   const normalizedRole = normalizeRole(
     user?.role || payload?.role || payload?.authorities?.[0] || payload?.userRole,
@@ -62,12 +74,14 @@ export function AuthProvider({ children }) {
     try {
       const response = await authService.login(credentials)
       const requiresPasswordChange = Boolean(response?.requiresPasswordChange)
+      const responseToken = extractToken(response)
 
-      if (requiresPasswordChange && !response?.token && !response?.accessToken) {
+      if (requiresPasswordChange && !responseToken) {
         const pendingState = {
           userId: response?.userId,
           email: credentials?.email,
           requiresPasswordChange: true,
+          firstLogin: true,
         }
 
         setPendingPasswordChange(pendingState)
@@ -118,11 +132,42 @@ export function AuthProvider({ children }) {
   }
 
   async function changePassword(payload) {
-    const response = await authService.changePassword(payload)
+    let response
+
+    if (pendingPasswordChange?.requiresPasswordChange) {
+      response = await authService.changeFirstAccessPassword({
+        userId: payload?.userId || pendingPasswordChange?.userId,
+        newPassword: payload?.newPassword,
+      })
+
+      const session = buildSession(response)
+
+      if (!session.token) {
+        throw new Error('Nao foi possivel concluir o primeiro acesso.')
+      }
+
+      http.setToken(session.token)
+
+      if (!session.user) {
+        try {
+          const profile = await authService.getProfile()
+          session.user = profile
+          session.role = normalizeRole(profile?.role)
+        } catch {
+          // Some backends may only return the token at this stage.
+        }
+      }
+
+      startTransition(() => {
+        setAuth(session)
+        setStoredAuth({ ...session, pendingPasswordChange: null })
+      })
+    } else {
+      response = await authService.changePassword(payload)
+    }
 
     if (pendingPasswordChange) {
       setPendingPasswordChange(null)
-      clearStoredAuth()
     }
 
     return response

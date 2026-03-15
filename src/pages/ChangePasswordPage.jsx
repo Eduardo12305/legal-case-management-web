@@ -9,6 +9,7 @@ function ChangePasswordPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { changePassword, pendingPasswordChange, isAuthenticated } = useAuth()
+  const isFirstAccess = Boolean(location.state?.firstLogin || pendingPasswordChange?.firstLogin)
   const [form, setForm] = useState({
     userId: location.state?.userId || pendingPasswordChange?.userId || '',
     currentPassword: '',
@@ -39,12 +40,12 @@ function ChangePasswordPage() {
     try {
       await changePassword({
         userId: form.userId || undefined,
-        currentPassword: form.currentPassword || undefined,
+        currentPassword: isFirstAccess ? undefined : form.currentPassword || undefined,
         newPassword: form.newPassword,
       })
 
       setStatus({ loading: false, error: '', success: 'Senha alterada com sucesso.' })
-      setTimeout(() => navigate(isAuthenticated ? '/dashboard' : '/login'), 900)
+      setTimeout(() => navigate(isFirstAccess || isAuthenticated ? '/dashboard' : '/login'), 900)
     } catch (error) {
       setStatus({ loading: false, error: getErrorMessage(error), success: '' })
     }
@@ -53,9 +54,13 @@ function ChangePasswordPage() {
   return (
     <section className="page-section single-page">
       <PageHeader
-        eyebrow="Primeiro login"
+        eyebrow={isFirstAccess ? 'Primeiro login' : 'Seguranca'}
         title="Alterar senha"
-        description="Defina uma nova senha para continuar o acesso com seguranca."
+        description={
+          isFirstAccess
+            ? 'Defina uma nova senha para concluir seu primeiro acesso com seguranca.'
+            : 'Atualize sua senha para continuar acessando a plataforma com seguranca.'
+        }
       />
 
       <article className="panel-card narrow">
@@ -71,19 +76,21 @@ function ChangePasswordPage() {
               placeholder="Preencha apenas se necessario"
             />
           </label>
-          <label htmlFor="change-password-current">
-            Senha atual
-            <input
-              id="change-password-current"
-              name="currentPassword"
-              type="password"
-              autoComplete="current-password"
-              value={form.currentPassword}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, currentPassword: event.target.value }))
-              }
-            />
-          </label>
+          {!isFirstAccess ? (
+            <label htmlFor="change-password-current">
+              Senha atual
+              <input
+                id="change-password-current"
+                name="currentPassword"
+                type="password"
+                autoComplete="current-password"
+                value={form.currentPassword}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, currentPassword: event.target.value }))
+                }
+              />
+            </label>
+          ) : null}
           <label htmlFor="change-password-new">
             Nova senha
             <input
@@ -121,7 +128,7 @@ function ChangePasswordPage() {
             {status.loading ? 'Atualizando...' : 'Atualizar senha'}
           </button>
         </form>
-        {!isAuthenticated ? (
+        {!isAuthenticated && !isFirstAccess ? (
           <p className="muted">
             Apos concluir, volte para <Link to="/login">login</Link>.
           </p>
