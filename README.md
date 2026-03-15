@@ -10,6 +10,7 @@ Arquivos atuais:
 
 - `.env`
 - `.env.production`
+- `.env.example`
 
 ## Desenvolvimento
 

@@ -23,7 +23,7 @@ http.interceptors.response.use(
       error?.response?.data?.message ||
       error?.response?.data?.error ||
       error?.message ||
-      'Unexpected request error.'
+      'Nao foi possivel concluir a solicitacao.'
 
     return Promise.reject(new Error(message))
   },
