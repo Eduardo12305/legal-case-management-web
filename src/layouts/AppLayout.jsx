@@ -32,6 +32,7 @@ function AppLayout() {
 
         <nav className="top-nav">
           <NavLink to="/dashboard">Dashboard</NavLink>
+          <NavLink to="/chat">Chat</NavLink>
           <NavLink to="/profile">Perfil</NavLink>
           {canManageUsers(role) && <NavLink to="/users">Usuarios</NavLink>}
           {canViewProcessesMenu(role) && (

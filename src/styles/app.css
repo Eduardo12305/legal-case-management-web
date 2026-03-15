@@ -777,6 +777,86 @@ textarea:focus {
   align-items: start;
 }
 
+.chat-shell {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.5fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.chat-sidebar,
+.chat-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.chat-contact-list,
+.chat-message-list {
+  display: grid;
+  gap: 12px;
+}
+
+.chat-contact-card,
+.chat-message {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(25, 43, 61, 0.12);
+  background: #f9fbfd;
+  text-align: left;
+}
+
+.chat-contact-card {
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.chat-contact-card.active,
+.chat-contact-card:hover {
+  border-color: rgba(27, 76, 125, 0.28);
+  box-shadow: 0 10px 24px rgba(27, 76, 125, 0.08);
+  transform: translateY(-1px);
+}
+
+.chat-contact-card strong,
+.chat-message strong {
+  color: #17212b;
+}
+
+.chat-contact-card span,
+.chat-message span {
+  color: #5f6d7a;
+}
+
+.chat-message-list {
+  min-height: 360px;
+  max-height: 560px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.chat-message {
+  max-width: 85%;
+}
+
+.chat-message p {
+  margin: 0;
+  color: #243241;
+  white-space: pre-wrap;
+}
+
+.chat-message.own {
+  margin-left: auto;
+  background: linear-gradient(180deg, #e7f1fb, #f4f9ff);
+  border-color: rgba(27, 76, 125, 0.16);
+}
+
+.chat-compose {
+  display: grid;
+  gap: 14px;
+}
+
 .nested-card {
   border-style: dashed;
   background: #f9fbfd;
@@ -954,6 +1034,7 @@ textarea:focus {
   .info-grid,
   .panel-grid,
   .panel-split,
+  .chat-shell,
   .form-grid,
   .process-form-grid,
   .process-field-grid,

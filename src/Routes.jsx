@@ -6,6 +6,7 @@ import ProtectedRoute from './routes/ProtectedRoute'
 import RoleRoute from './routes/RoleRoute'
 import ScrollToHash from './routes/ScrollToHash'
 import ChangePasswordPage from './pages/ChangePasswordPage'
+import ChatPage from './pages/ChatPage'
 import DashboardPage from './pages/DashboardPage'
 import HomePage from './pages/HomePage'
 import LoginPage from './pages/LoginPage'
@@ -34,6 +35,7 @@ function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
               <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/chat" element={<ChatPage />} />
               <Route path="/profile" element={<ProfilePage />} />
 
               <Route

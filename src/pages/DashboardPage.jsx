@@ -102,6 +102,9 @@ function DashboardPage() {
         <article className="panel-card">
           <h4>Atalhos</h4>
           <div className="quick-actions">
+            <Link className="secondary-button" to="/chat">
+              Abrir chat
+            </Link>
             <Link className="secondary-button" to="/profile">
               Editar perfil
             </Link>
