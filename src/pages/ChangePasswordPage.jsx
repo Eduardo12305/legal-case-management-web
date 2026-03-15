@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import useAuth from '../hooks/useAuth'
 import { getErrorMessage } from '../utils/helpers'
+import { MIN_PASSWORD_LENGTH } from '../utils/forms'
 
 function ChangePasswordPage() {
   const navigate = useNavigate()
@@ -21,6 +22,15 @@ function ChangePasswordPage() {
 
     if (form.newPassword !== form.confirmPassword) {
       setStatus({ loading: false, error: 'As senhas nao conferem.', success: '' })
+      return
+    }
+
+    if (form.newPassword.length < MIN_PASSWORD_LENGTH) {
+      setStatus({
+        loading: false,
+        error: `A nova senha deve ter ao menos ${MIN_PASSWORD_LENGTH} caracteres.`,
+        success: '',
+      })
       return
     }
 
@@ -81,6 +91,7 @@ function ChangePasswordPage() {
               name="newPassword"
               type="password"
               autoComplete="new-password"
+              minLength={MIN_PASSWORD_LENGTH}
               value={form.newPassword}
               onChange={(event) =>
                 setForm((current) => ({ ...current, newPassword: event.target.value }))
@@ -95,6 +106,7 @@ function ChangePasswordPage() {
               name="confirmPassword"
               type="password"
               autoComplete="new-password"
+              minLength={MIN_PASSWORD_LENGTH}
               value={form.confirmPassword}
               onChange={(event) =>
                 setForm((current) => ({ ...current, confirmPassword: event.target.value }))
@@ -102,6 +114,7 @@ function ChangePasswordPage() {
               required
             />
           </label>
+          <p className="muted">A nova senha precisa ter no minimo 8 caracteres.</p>
           {status.error ? <p className="form-error">{status.error}</p> : null}
           {status.success ? <p className="form-success">{status.success}</p> : null}
           <button type="submit" className="primary-button" disabled={status.loading}>

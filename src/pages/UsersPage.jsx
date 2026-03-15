@@ -5,6 +5,7 @@ import PageHeader from '../components/PageHeader'
 import useAuth from '../hooks/useAuth'
 import authService from '../services/authService'
 import userService from '../services/userService'
+import { formatCpf, isCompleteCpf, normalizeCpf, CPF_MASK_LENGTH } from '../utils/forms'
 import { asArray, getErrorMessage } from '../utils/helpers'
 import { getCreatableRoles, isAdmin } from '../utils/roles'
 
@@ -111,7 +112,19 @@ function UsersPage() {
     setInviteStatus({ loading: true, error: '', success: '' })
 
     try {
-      await authService.createInvite(inviteForm)
+      if (!isCompleteCpf(inviteForm.cpf)) {
+        setInviteStatus({
+          loading: false,
+          error: 'Informe um CPF valido com 11 numeros.',
+          success: '',
+        })
+        return
+      }
+
+      await authService.createInvite({
+        ...inviteForm,
+        cpf: normalizeCpf(inviteForm.cpf),
+      })
       setInviteStatus({
         loading: false,
         error: '',
@@ -249,9 +262,14 @@ function UsersPage() {
                 <input
                   value={inviteForm.cpf}
                   onChange={(event) =>
-                    setInviteForm((current) => ({ ...current, cpf: event.target.value }))
+                    setInviteForm((current) => ({
+                      ...current,
+                      cpf: formatCpf(event.target.value),
+                    }))
                   }
-                  placeholder="Somente numeros ou formatado"
+                  inputMode="numeric"
+                  maxLength={CPF_MASK_LENGTH}
+                  placeholder="000.000.000-00"
                   required
                 />
               </label>
@@ -337,7 +355,11 @@ function UsersPage() {
         <DataTable
           columns={[
             { key: 'name', label: 'Nome' },
-            { key: 'cpf', label: 'CPF' },
+            {
+              key: 'cpf',
+              label: 'CPF',
+              render: (client) => formatCpf(client.cpf) || 'CPF nao informado',
+            },
             { key: 'email', label: 'Email' },
             { key: 'phone', label: 'Telefone' },
             {

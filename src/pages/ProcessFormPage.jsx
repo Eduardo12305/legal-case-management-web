@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import processService from '../services/processService'
 import userService from '../services/userService'
+import { formatCpf, isCompleteCpf, normalizeCpf, CPF_MASK_LENGTH } from '../utils/forms'
 import { asArray, getEntityId, getErrorMessage } from '../utils/helpers'
 import { buildProcessPayload, PROCESS_STATUS_OPTIONS } from '../utils/processes'
 
@@ -30,7 +31,16 @@ function ProcessFormPage() {
     setClientStatus({ loading: true, error: '' })
 
     try {
-      const data = await userService.listClients({ query: clientSearch, active: 'active' })
+      if (!isCompleteCpf(clientSearch)) {
+        setClientStatus({ loading: false, error: 'Informe um CPF valido com 11 numeros.' })
+        setClientOptions([])
+        return
+      }
+
+      const data = await userService.listClients({
+        query: normalizeCpf(clientSearch),
+        active: 'active',
+      })
       const items = asArray(data)
       setClientOptions(items)
       setSelectedClient(null)
@@ -141,8 +151,10 @@ function ProcessFormPage() {
                 CPF do cliente
                 <input
                   value={clientSearch}
-                  onChange={(event) => setClientSearch(event.target.value)}
-                  placeholder="Digite o CPF para buscar no banco"
+                  onChange={(event) => setClientSearch(formatCpf(event.target.value))}
+                  inputMode="numeric"
+                  maxLength={CPF_MASK_LENGTH}
+                  placeholder="000.000.000-00"
                 />
               </label>
               <button
@@ -160,7 +172,7 @@ function ProcessFormPage() {
             {selectedClient ? (
               <div className="selected-client compact-top">
                 <strong>{selectedClient.name || 'Cliente selecionado'}</strong>
-                <span>{selectedClient.cpf || 'CPF nao informado'}</span>
+                <span>{formatCpf(selectedClient.cpf) || 'CPF nao informado'}</span>
                 <span>{selectedClient.email || 'Email nao informado'}</span>
               </div>
             ) : null}
@@ -177,7 +189,7 @@ function ProcessFormPage() {
                     onClick={() => handleSelectClient(client)}
                   >
                     <strong>{client.name || 'Cliente sem nome'}</strong>
-                    <span>{client.cpf || 'CPF nao informado'}</span>
+                    <span>{formatCpf(client.cpf) || 'CPF nao informado'}</span>
                     <small>{client.email || client.phone || 'Sem contato cadastrado'}</small>
                   </button>
                 ))}

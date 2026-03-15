@@ -5,6 +5,7 @@ import PageHeader from '../components/PageHeader'
 import useAuth from '../hooks/useAuth'
 import processService from '../services/processService'
 import userService from '../services/userService'
+import { formatCpf } from '../utils/forms'
 import { asArray, getEntityId, getErrorMessage } from '../utils/helpers'
 import { canCreateProcesses, canSearchProcessesByClient, isAdmin } from '../utils/roles'
 
@@ -107,7 +108,7 @@ function ProcessesPage() {
             {selectedClient ? (
               <div className="selected-client">
                 <strong>{selectedClient.name || 'Cliente selecionado'}</strong>
-                <span>{selectedClient.cpf || 'CPF nao informado'}</span>
+                <span>{formatCpf(selectedClient.cpf) || 'CPF nao informado'}</span>
                 <span>{selectedClient.email || 'Email nao informado'}</span>
               </div>
             ) : null}
@@ -124,7 +125,7 @@ function ProcessesPage() {
                     onClick={() => handleSelectClient(client)}
                   >
                     <strong>{client.name || 'Cliente sem nome'}</strong>
-                    <span>{client.cpf || 'CPF nao informado'}</span>
+                    <span>{formatCpf(client.cpf) || 'CPF nao informado'}</span>
                     <small>{client.email || client.phone || 'Sem contato cadastrado'}</small>
                   </button>
                 ))}

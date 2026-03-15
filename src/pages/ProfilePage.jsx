@@ -2,6 +2,7 @@ import { useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import useAuth from '../hooks/useAuth'
 import authService from '../services/authService'
+import { formatCpf, isCompleteCpf, normalizeCpf, CPF_MASK_LENGTH } from '../utils/forms'
 import { getErrorMessage } from '../utils/helpers'
 import { isClient } from '../utils/roles'
 
@@ -11,7 +12,7 @@ function ProfilePage() {
     name: user?.name || user?.fullName || '',
     email: user?.email || '',
     phone: user?.phone || '',
-    document: user?.document || user?.cpf || '',
+    document: isClient(role) ? formatCpf(user?.document || user?.cpf || '') : user?.document || '',
   })
   const [status, setStatus] = useState({ loading: false, error: '', success: '' })
 
@@ -21,7 +22,18 @@ function ProfilePage() {
 
     try {
       if (isClient(role)) {
-        await authService.updateClientProfile(form)
+        if (!isCompleteCpf(form.document)) {
+          setStatus({ loading: false, error: 'Informe um CPF valido com 11 numeros.', success: '' })
+          return
+        }
+
+        const normalizedCpf = normalizeCpf(form.document)
+
+        await authService.updateClientProfile({
+          ...form,
+          document: normalizedCpf,
+          cpf: normalizedCpf,
+        })
       } else {
         await authService.updateProfile(form)
       }
@@ -66,12 +78,20 @@ function ProfilePage() {
             />
           </label>
           <label>
-            Documento
+            {isClient(role) ? 'CPF' : 'Documento'}
             <input
               value={form.document}
               onChange={(event) =>
-                setForm((current) => ({ ...current, document: event.target.value }))
+                setForm((current) => ({
+                  ...current,
+                  document: isClient(role)
+                    ? formatCpf(event.target.value)
+                    : event.target.value,
+                }))
               }
+              inputMode={isClient(role) ? 'numeric' : undefined}
+              maxLength={isClient(role) ? CPF_MASK_LENGTH : undefined}
+              placeholder={isClient(role) ? '000.000.000-00' : undefined}
             />
           </label>
           {status.error ? <p className="form-error">{status.error}</p> : null}
