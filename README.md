@@ -29,9 +29,38 @@ Os arquivos finais serao gerados em `dist/`.
 
 ## Publicacao sem Docker
 
-1. Rode `npm run build`.
-2. Envie o conteudo da pasta `dist/` para a hospedagem.
-3. Configure o servidor para sempre responder `index.html` nas rotas do React.
+O arquivo inicial para hospedagem Node e:
+
+- `server.js`
+
+Partindo da raiz, o caminho e:
+
+- `server.js`
+
+Esse arquivo:
+
+- gera o build automaticamente ao iniciar;
+- serve a pasta `dist/`;
+- responde `index.html` nas rotas do React.
+
+### Comando de inicializacao
+
+Se a plataforma aceitar comando de start:
+
+```bash
+npm start
+```
+
+Se ela pedir apenas o arquivo inicial, use:
+
+```text
+server.js
+```
+
+### Fluxo
+
+1. Rode `npm install`.
+2. Inicie com `npm start` ou configure `server.js` como arquivo inicial.
 
 Isso e importante para links como:
 
