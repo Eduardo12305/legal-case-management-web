@@ -19,14 +19,6 @@ npm install
 npm run dev
 ```
 
-## Build de producao
-
-```bash
-npm run build
-```
-
-Os arquivos finais serao gerados em `dist/`.
-
 ## Publicacao sem Docker
 
 O arquivo inicial para hospedagem Node e:
