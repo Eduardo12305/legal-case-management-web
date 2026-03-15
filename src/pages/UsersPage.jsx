@@ -1,13 +1,34 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import DataTable from '../components/DataTable'
 import InfoGrid from '../components/InfoGrid'
 import PageHeader from '../components/PageHeader'
 import useAuth from '../hooks/useAuth'
 import authService from '../services/authService'
 import userService from '../services/userService'
-import { formatCpf, isCompleteCpf, normalizeCpf, CPF_MASK_LENGTH } from '../utils/forms'
+import {
+  formatCpf,
+  formatZipCode,
+  isCompleteCpf,
+  isCompleteZipCode,
+  normalizeCpf,
+  normalizeZipCode,
+  onlyDigits,
+  CPF_MASK_LENGTH,
+  ZIP_CODE_MASK_LENGTH,
+} from '../utils/forms'
 import { asArray, getErrorMessage } from '../utils/helpers'
 import { getCreatableRoles, isAdmin } from '../utils/roles'
+
+const INITIAL_INVITE_FORM = {
+  name: '',
+  email: '',
+  cpf: '',
+  phone: '',
+  city: '',
+  state: '',
+  zipCode: '',
+  role: 'CLIENT',
+}
 
 function UsersPage() {
   const { role } = useAuth()
@@ -17,16 +38,12 @@ function UsersPage() {
   const [pagination, setPagination] = useState({ total: 0, page: 1, totalPages: 1 })
   const [filters, setFilters] = useState({ query: '', active: 'all' })
   const [status, setStatus] = useState({ loading: true, error: '', searchLoading: false })
-  const [inviteForm, setInviteForm] = useState({
-    name: '',
-    email: '',
-    cpf: '',
-    role: 'CLIENT',
-  })
+  const [inviteForm, setInviteForm] = useState(INITIAL_INVITE_FORM)
   const [inviteStatus, setInviteStatus] = useState({ loading: false, error: '', success: '' })
   const creatableRoles = getCreatableRoles(role)
+  const isClientInvite = inviteForm.role === 'CLIENT'
 
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     setStatus({ loading: true, error: '' })
     try {
       const result = await userService.list()
@@ -40,26 +57,11 @@ function UsersPage() {
     } catch (error) {
       setStatus({ loading: false, error: getErrorMessage(error), searchLoading: false })
     }
-  }
+  }, [])
 
   useEffect(() => {
-    async function fetchUsers() {
-      try {
-        const result = await userService.list()
-        setUsers(result?.users || [])
-        setPagination({
-          total: result?.total || 0,
-          page: result?.page || 1,
-          totalPages: result?.totalPages || 1,
-        })
-        setStatus({ loading: false, error: '', searchLoading: false })
-      } catch (error) {
-        setStatus({ loading: false, error: getErrorMessage(error), searchLoading: false })
-      }
-    }
-
-    fetchUsers()
-  }, [])
+    loadUsers()
+  }, [loadUsers])
 
   const handleToggleActive = async (userId) => {
     try {
@@ -86,7 +88,6 @@ function UsersPage() {
     try {
       const data = await userService.listClients(filters)
       setClients(asArray(data))
-      setView('clients')
       setStatus((current) => ({ ...current, searchLoading: false, error: '' }))
     } catch (error) {
       setStatus((current) => ({
@@ -121,16 +122,62 @@ function UsersPage() {
         return
       }
 
-      await authService.createInvite({
-        ...inviteForm,
-        cpf: normalizeCpf(inviteForm.cpf),
-      })
+      if (isClientInvite) {
+        if (!inviteForm.phone.trim()) {
+          setInviteStatus({
+            loading: false,
+            error: 'Informe o telefone do cliente.',
+            success: '',
+          })
+          return
+        }
+
+        if (!inviteForm.city.trim() || !inviteForm.state.trim()) {
+          setInviteStatus({
+            loading: false,
+            error: 'Informe cidade e estado do cliente.',
+            success: '',
+          })
+          return
+        }
+
+        if (!isCompleteZipCode(inviteForm.zipCode)) {
+          setInviteStatus({
+            loading: false,
+            error: 'Informe um CEP valido com 8 numeros.',
+            success: '',
+          })
+          return
+        }
+      }
+
+      const payload = isClientInvite
+        ? {
+            email: inviteForm.email.trim(),
+            name: inviteForm.name.trim(),
+            phone: onlyDigits(inviteForm.phone),
+            role: inviteForm.role,
+            clientData: {
+              cpf: normalizeCpf(inviteForm.cpf),
+              city: inviteForm.city.trim(),
+              state: inviteForm.state.trim().toUpperCase(),
+              zipCode: normalizeZipCode(inviteForm.zipCode),
+            },
+          }
+        : {
+            name: inviteForm.name.trim(),
+            email: inviteForm.email.trim(),
+            cpf: normalizeCpf(inviteForm.cpf),
+            role: inviteForm.role,
+          }
+
+      await authService.createInvite(payload)
       setInviteStatus({
         loading: false,
         error: '',
         success: 'Usuario cadastrado com sucesso e pronto para o proximo passo de acesso.',
       })
-      setInviteForm({ name: '', email: '', cpf: '', role: 'CLIENT' })
+      setInviteForm(INITIAL_INVITE_FORM)
       await loadUsers()
     } catch (error) {
       setInviteStatus({ loading: false, error: getErrorMessage(error), success: '' })
@@ -187,51 +234,70 @@ function UsersPage() {
             >
               Buscar clientes
             </button>
-          </div>
-
-          <form className="search-grid" onSubmit={handleClientSearch}>
-            <label className="full-span">
-              Buscar cliente
-              <input
-                value={filters.query}
-                onChange={(event) =>
-                  setFilters((current) => ({ ...current, query: event.target.value }))
-                }
-                placeholder="Digite CPF, nome, email ou telefone"
-              />
-            </label>
-            <label>
-              Status
-              <select
-                value={filters.active}
-                onChange={(event) =>
-                  setFilters((current) => ({ ...current, active: event.target.value }))
-                }
+            {creatableRoles.length ? (
+              <button
+                type="button"
+                className={view === 'create' ? 'secondary-button is-active' : 'secondary-button'}
+                onClick={() => setView('create')}
               >
-                <option value="all">Todos</option>
-                <option value="active">Ativos</option>
-                <option value="inactive">Inativos</option>
-              </select>
-            </label>
-            <button type="submit" className="primary-button" disabled={status.searchLoading}>
-              {status.searchLoading ? 'Buscando...' : 'Pesquisar'}
-            </button>
-          </form>
+                Novo acesso
+              </button>
+            ) : null}
+          </div>
         </div>
       </article>
 
-      {creatableRoles.length ? (
+      {view === 'clients' ? (
+        <article className="panel-card">
+          <div className="toolbar-header">
+            <div>
+              <p className="eyebrow">Consulta de clientes</p>
+              <h4>Buscar por nome, CPF, email ou telefone</h4>
+            </div>
+
+            <form className="search-grid" onSubmit={handleClientSearch}>
+              <label>
+                Buscar cliente
+                <input
+                  value={filters.query}
+                  onChange={(event) =>
+                    setFilters((current) => ({ ...current, query: event.target.value }))
+                  }
+                  placeholder="Digite CPF, nome, email ou telefone"
+                />
+              </label>
+              <label>
+                Status
+                <select
+                  value={filters.active}
+                  onChange={(event) =>
+                    setFilters((current) => ({ ...current, active: event.target.value }))
+                  }
+                >
+                  <option value="all">Todos</option>
+                  <option value="active">Ativos</option>
+                  <option value="inactive">Inativos</option>
+                </select>
+              </label>
+              <button type="submit" className="primary-button" disabled={status.searchLoading}>
+                {status.searchLoading ? 'Buscando...' : 'Pesquisar'}
+              </button>
+            </form>
+          </div>
+        </article>
+      ) : null}
+
+      {view === 'create' && creatableRoles.length ? (
         <article className="panel-card">
           <div className="panel-split">
             <div>
               <p className="eyebrow">Criar usuario</p>
               <h4>Novo acesso para a equipe ou cliente</h4>
               <p className="muted">
-                Cadastre novos acessos de forma interna para manter a operacao organizada e o
-                relacionamento com clientes mais fluido.
+                A criacao agora fica separada da consulta para manter o fluxo mais claro.
               </p>
               <p className="muted">
-                Informe os dados principais do usuario para liberar o acesso com mais rapidez.
+                Quando o perfil for `CLIENT`, os campos de telefone e endereco aparecem automaticamente.
               </p>
             </div>
 
@@ -288,6 +354,68 @@ function UsersPage() {
                   ))}
                 </select>
               </label>
+
+              {isClientInvite ? (
+                <>
+                  <label>
+                    Telefone
+                    <input
+                      value={inviteForm.phone}
+                      onChange={(event) =>
+                        setInviteForm((current) => ({
+                          ...current,
+                          phone: onlyDigits(event.target.value).slice(0, 11),
+                        }))
+                      }
+                      inputMode="numeric"
+                      placeholder="Somente numeros"
+                      required
+                    />
+                  </label>
+                  <label>
+                    Cidade
+                    <input
+                      value={inviteForm.city}
+                      onChange={(event) =>
+                        setInviteForm((current) => ({ ...current, city: event.target.value }))
+                      }
+                      required
+                    />
+                  </label>
+                  <label>
+                    Estado
+                    <input
+                      value={inviteForm.state}
+                      onChange={(event) =>
+                        setInviteForm((current) => ({
+                          ...current,
+                          state: event.target.value.toUpperCase().slice(0, 2),
+                        }))
+                      }
+                      placeholder="UF"
+                      maxLength={2}
+                      required
+                    />
+                  </label>
+                  <label>
+                    CEP
+                    <input
+                      value={inviteForm.zipCode}
+                      onChange={(event) =>
+                        setInviteForm((current) => ({
+                          ...current,
+                          zipCode: formatZipCode(event.target.value),
+                        }))
+                      }
+                      inputMode="numeric"
+                      maxLength={ZIP_CODE_MASK_LENGTH}
+                      placeholder="00000-000"
+                      required
+                    />
+                  </label>
+                </>
+              ) : null}
+
               <div className="invite-actions full-span">
                 <button
                   type="submit"
@@ -307,7 +435,7 @@ function UsersPage() {
       ) : null}
 
       {status.error ? <p className="form-error">{status.error}</p> : null}
-      {status.loading ? <p className="muted">Carregando usuarios...</p> : null}
+      {status.loading && view === 'users' ? <p className="muted">Carregando usuarios...</p> : null}
 
       {view === 'users' ? (
         <DataTable
@@ -351,14 +479,14 @@ function UsersPage() {
           emptyTitle="Nenhum usuario encontrado"
           emptyDescription="Nenhum usuario disponivel para exibicao."
         />
-      ) : (
+      ) : view === 'clients' ? (
         <DataTable
           columns={[
             { key: 'name', label: 'Nome' },
             {
               key: 'cpf',
               label: 'CPF',
-              render: (client) => formatCpf(client.cpf) || 'CPF nao informado',
+              render: (client) => formatCpf(client.cpf || client.clientData?.cpf) || 'CPF nao informado',
             },
             { key: 'email', label: 'Email' },
             { key: 'phone', label: 'Telefone' },
@@ -392,7 +520,8 @@ function UsersPage() {
           emptyTitle="Nenhum cliente encontrado"
           emptyDescription="Pesquise por CPF, nome, email ou telefone para localizar o cliente certo."
         />
-      )}
+      ) : null
+      }
     </section>
   )
 }
