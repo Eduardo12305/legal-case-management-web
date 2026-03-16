@@ -79,6 +79,7 @@ export function AuthProvider({ children }) {
       if (requiresPasswordChange && !responseToken) {
         const pendingState = {
           userId: response?.userId,
+          login: credentials?.email,
           email: credentials?.email,
           requiresPasswordChange: true,
           firstLogin: true,
@@ -135,10 +136,18 @@ export function AuthProvider({ children }) {
     let response
 
     if (pendingPasswordChange?.requiresPasswordChange) {
-      response = await authService.changeFirstAccessPassword({
-        userId: payload?.userId || pendingPasswordChange?.userId,
+      const firstAccessPayload = {
+        login: payload?.login || pendingPasswordChange?.login || pendingPasswordChange?.email,
+        email: payload?.login || pendingPasswordChange?.login || pendingPasswordChange?.email,
+        userId: pendingPasswordChange?.userId,
+        password: payload?.newPassword,
         newPassword: payload?.newPassword,
-      })
+      }
+
+      console.log('Primeiro acesso - payload enviado:', firstAccessPayload)
+
+      response = await authService.changeFirstAccessPassword(firstAccessPayload)
+      console.log('Primeiro acesso - resposta da API de troca de senha:', response)
 
       const session = buildSession(response)
 

@@ -11,7 +11,7 @@ function ChangePasswordPage() {
   const { changePassword, pendingPasswordChange, isAuthenticated } = useAuth()
   const isFirstAccess = Boolean(location.state?.firstLogin || pendingPasswordChange?.firstLogin)
   const [form, setForm] = useState({
-    userId: location.state?.userId || pendingPasswordChange?.userId || '',
+    login: location.state?.email || pendingPasswordChange?.login || pendingPasswordChange?.email || '',
     currentPassword: '',
     newPassword: '',
     confirmPassword: '',
@@ -39,7 +39,7 @@ function ChangePasswordPage() {
 
     try {
       await changePassword({
-        userId: form.userId || undefined,
+        login: isFirstAccess ? form.login || undefined : undefined,
         currentPassword: isFirstAccess ? undefined : form.currentPassword || undefined,
         newPassword: form.newPassword,
       })
@@ -65,17 +65,21 @@ function ChangePasswordPage() {
 
       <article className="panel-card narrow">
         <form className="stack-form" onSubmit={handleSubmit} autoComplete="on">
-          <label htmlFor="change-password-user-id">
-            Identificador
-            <input
-              id="change-password-user-id"
-              name="userId"
-              autoComplete="off"
-              value={form.userId}
-              onChange={(event) => setForm((current) => ({ ...current, userId: event.target.value }))}
-              placeholder="Preencha apenas se necessario"
-            />
-          </label>
+          {isFirstAccess ? (
+            <label htmlFor="change-password-login">
+              Login
+              <input
+                id="change-password-login"
+                name="login"
+                type="email"
+                autoComplete="username"
+                inputMode="email"
+                value={form.login}
+                onChange={(event) => setForm((current) => ({ ...current, login: event.target.value }))}
+                required
+              />
+            </label>
+          ) : null}
           {!isFirstAccess ? (
             <label htmlFor="change-password-current">
               Senha atual

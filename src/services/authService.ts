@@ -53,8 +53,26 @@ const authService = {
   },
 
   changeFirstAccessPassword: async (payload) => {
-    const { data } = await http.post('/api/auth/first-access/change-password', payload)
-    return data
+    const response = await axios.post('/api/auth/first-access/change-password', payload, {
+      baseURL: http.defaults.baseURL,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      validateStatus: () => true,
+    })
+
+    if (response.status >= 400) {
+      console.error('Primeiro acesso - erro da API:', response.data)
+
+      const message =
+        response?.data?.message ||
+        response?.data?.error ||
+        'Nao foi possivel concluir o primeiro acesso.'
+
+      throw new Error(message)
+    }
+
+    return response.data
   },
 }
 
