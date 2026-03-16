@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import useAuth from '../hooks/useAuth'
 import chatService from '../services/chatService'
@@ -199,6 +199,15 @@ function getMessageSenderId(message) {
   )
 }
 
+function getMessageConversationId(message) {
+  return (
+    message?.conversationId ||
+    message?.chatConversationId ||
+    getEntityId(message?.conversation) ||
+    ''
+  )
+}
+
 function extractMessages(data) {
   if (Array.isArray(data)) {
     return data
@@ -265,12 +274,13 @@ function formatMessageTime(value) {
 }
 
 function ChatPage() {
-  const { role, user } = useAuth()
+  const { role, token, user } = useAuth()
   const currentUserId = getEntityId(user)
   const canUseChat = isChatEligibleUser(user)
   const canSearchClients = isAdmin(role) || isStaff(role) || isLawyer(role)
   const canResolveGeneral = canUseChat && canStartGeneralChat(role)
   const canResolveLawyer = canUseChat && canStartLawyerChat(role)
+  const streamRef = useRef(null)
   const [conversations, setConversations] = useState([])
   const [selectedConversationId, setSelectedConversationId] = useState(null)
   const [messages, setMessages] = useState([])
@@ -285,6 +295,7 @@ function ChatPage() {
   })
   const [sendState, setSendState] = useState({ loading: false, error: '' })
   const [resolveState, setResolveState] = useState({ loading: false, error: '' })
+  const [streamState, setStreamState] = useState({ connected: false, error: '' })
   const [clientSearch, setClientSearch] = useState('')
   const [clientOptions, setClientOptions] = useState([])
   const [selectedClient, setSelectedClient] = useState(null)
@@ -377,6 +388,66 @@ function ChatPage() {
 
     loadMessages()
   }, [selectedConversationId])
+
+  useEffect(() => {
+    if (streamRef.current) {
+      streamRef.current.close()
+      streamRef.current = null
+    }
+
+    if (!selectedConversationId || !token || !canUseChat) {
+      setStreamState({ connected: false, error: '' })
+      return undefined
+    }
+
+    const stream = chatService.createStream({
+      conversationId: selectedConversationId,
+      token,
+    })
+
+    const handleChatMessage = (event) => {
+      try {
+        const message = JSON.parse(event.data)
+        const messageConversationId = getMessageConversationId(message)
+
+        if (messageConversationId && messageConversationId !== selectedConversationId) {
+          return
+        }
+
+        setMessages((current) => mergeMessages(current, [message]))
+      } catch {
+        setStreamState((current) => ({
+          ...current,
+          error: 'Nao foi possivel atualizar a conversa em tempo real.',
+        }))
+      }
+    }
+
+    streamRef.current = stream
+    setStreamState({ connected: false, error: '' })
+
+    stream.onopen = () => {
+      setStreamState({ connected: true, error: '' })
+    }
+
+    stream.addEventListener('chat.message', handleChatMessage)
+
+    stream.onerror = () => {
+      setStreamState({
+        connected: false,
+        error: 'Conexao em tempo real indisponivel no momento.',
+      })
+    }
+
+    return () => {
+      stream.removeEventListener('chat.message', handleChatMessage)
+      stream.close()
+
+      if (streamRef.current === stream) {
+        streamRef.current = null
+      }
+    }
+  }, [canUseChat, selectedConversationId, token])
 
   const handleClientSearch = async (event) => {
     event.preventDefault()
@@ -510,9 +581,6 @@ function ChatPage() {
       })
     }
   }
-
-  const selectedConversationTypeLabel =
-    selectedConversation?.type === CHAT_TYPES.LAWYER ? 'Conversa juridica' : 'Atendimento geral'
 
   return (
     <section className="page-section">
@@ -689,8 +757,12 @@ function ChatPage() {
               <p className="eyebrow">Conversa ativa</p>
               <h4>{selectedConversation?.title || 'Selecione uma conversa'}</h4>
             </div>
-            <span className={`status-pill ${selectedConversation ? 'on' : 'neutral'}`}>
-              {selectedConversation ? selectedConversationTypeLabel : 'Sem conversa'}
+            <span className={`status-pill ${streamState.connected ? 'on' : 'neutral'}`}>
+              {selectedConversation
+                ? streamState.connected
+                  ? 'Ao vivo'
+                  : 'Sem stream'
+                : 'Sem conversa'}
             </span>
           </div>
 
@@ -699,6 +771,10 @@ function ChatPage() {
               <div>
                 <span>Canal</span>
                 <strong>{selectedConversation.subtitle}</strong>
+              </div>
+              <div>
+                <span>Atualizacao</span>
+                <strong>{streamState.connected ? 'Em tempo real' : 'Aguardando conexao'}</strong>
               </div>
               {selectedConversation.counterpart ? (
                 <div>
@@ -712,6 +788,7 @@ function ChatPage() {
           {conversationState.error ? (
             <p className="form-error compact-top">{conversationState.error}</p>
           ) : null}
+          {streamState.error ? <p className="form-error compact-top">{streamState.error}</p> : null}
 
           <div className="chat-message-list compact-top">
             {conversationState.loading ? (
