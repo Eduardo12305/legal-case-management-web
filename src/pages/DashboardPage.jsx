@@ -8,6 +8,7 @@ import { asArray, getEntityId, getErrorMessage } from '../utils/helpers'
 import {
   canCreateProcesses,
   canManageUsers,
+  canSearchProcessesByClient,
   canViewProcessesMenu,
   isAdmin,
   isClient,
@@ -15,12 +16,25 @@ import {
 
 function DashboardPage() {
   const { role, user } = useAuth()
+  const hasProcessAccess = isClient(role) || canViewProcessesMenu(role)
   const processListPath = isClient(role) ? '/my-processes' : '/processes'
   const processShortcutLabel = isClient(role)
     ? 'Meus processos'
     : isAdmin(role)
       ? 'Pesquisar processos'
       : 'Consultar processos'
+  const mainFlowLabel = isClient(role)
+    ? 'Acompanhamento de processos'
+    : canCreateProcesses(role)
+      ? 'Operacao de processos'
+      : canManageUsers(role)
+        ? 'Consulta e administracao'
+        : 'Atendimento interno'
+  const shortcutsCount =
+    2 +
+    (hasProcessAccess ? 1 : 0) +
+    (canManageUsers(role) ? 1 : 0) +
+    (canCreateProcesses(role) ? 1 : 0)
   const [summary, setSummary] = useState({
     loading: true,
     totalProcesses: 0,
@@ -30,6 +44,16 @@ function DashboardPage() {
 
   useEffect(() => {
     async function load() {
+      if (!hasProcessAccess) {
+        setSummary({
+          loading: false,
+          totalProcesses: 0,
+          lastProcess: null,
+          error: '',
+        })
+        return
+      }
+
       try {
         const response = isClient(role)
           ? await processService.listMine()
@@ -45,13 +69,13 @@ function DashboardPage() {
         setSummary((current) => ({
           ...current,
           loading: false,
-          error: getErrorMessage(error),
+          error: getErrorMessage(error, 'Nao foi possivel atualizar o resumo de processos agora.'),
         }))
       }
     }
 
     load()
-  }, [role])
+  }, [hasProcessAccess, role])
 
   return (
     <section className="page-section">
@@ -66,20 +90,22 @@ function DashboardPage() {
           { label: 'Perfil', value: role || 'Nao informado' },
           {
             label: 'Processos visiveis',
-            value: summary.loading ? '...' : summary.totalProcesses,
-            helper: summary.error || 'Quantidade de processos disponiveis no momento.',
+            value: hasProcessAccess ? (summary.loading ? '...' : summary.totalProcesses) : '-',
+            helper: hasProcessAccess
+              ? summary.error || 'Quantidade de processos disponiveis no momento.'
+              : 'Esse indicador aparece quando sua conta tem acesso a processos.',
           },
           {
-            label: 'Usuarios',
-            value: canManageUsers(role) ? 'Liberado' : 'Bloqueado',
-            helper: 'Disponibilidade conforme o perfil atual.',
+            label: 'Fluxo principal',
+            value: mainFlowLabel,
+            helper: canSearchProcessesByClient(role)
+              ? 'Sua conta pode consultar clientes e processos conforme as permissoes ativas.'
+              : 'Sua conta fica focada em acompanhamento, perfil e comunicacao.',
           },
           {
-            label: 'Edicao de processos',
-            value: canCreateProcesses(role) ? 'Disponivel' : 'Somente consulta',
-            helper: canViewProcessesMenu(role)
-              ? 'A consulta segue as permissoes da sua conta.'
-              : 'Acompanhe apenas os processos vinculados ao seu acesso.',
+            label: 'Atalhos disponiveis',
+            value: shortcutsCount,
+            helper: 'Os acessos do painel acompanham o seu nivel de permissao.',
           },
         ]}
       />
@@ -88,11 +114,13 @@ function DashboardPage() {
         <article className="panel-card">
           <h4>Ultimo processo carregado</h4>
           <p className="muted">
-            {summary.lastProcess
+            {hasProcessAccess && summary.lastProcess
               ? `${summary.lastProcess.title || summary.lastProcess.subject || 'Sem titulo'}`
-              : 'Nenhum processo disponivel.'}
+              : hasProcessAccess
+                ? 'Nenhum processo disponivel.'
+                : 'Seu painel atual concentra comunicacao e dados da conta.'}
           </p>
-          {getEntityId(summary.lastProcess) ? (
+          {hasProcessAccess && getEntityId(summary.lastProcess) ? (
             <Link className="text-link" to={`/processes/${getEntityId(summary.lastProcess)}`}>
               Abrir detalhes
             </Link>
@@ -108,9 +136,16 @@ function DashboardPage() {
             <Link className="secondary-button" to="/profile">
               Editar perfil
             </Link>
-            <Link className="secondary-button" to={processListPath}>
-              {processShortcutLabel}
-            </Link>
+            {hasProcessAccess ? (
+              <Link className="secondary-button" to={processListPath}>
+                {processShortcutLabel}
+              </Link>
+            ) : null}
+            {canManageUsers(role) ? (
+              <Link className="secondary-button" to="/users">
+                Usuarios
+              </Link>
+            ) : null}
             {canCreateProcesses(role) ? (
               <Link className="secondary-button" to="/processes/new">
                 Novo processo

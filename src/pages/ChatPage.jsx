@@ -1,10 +1,23 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import useAuth from '../hooks/useAuth'
 import chatService from '../services/chatService'
 import userService from '../services/userService'
+import { formatCpf } from '../utils/forms'
 import { asArray, getEntityId, getErrorMessage } from '../utils/helpers'
-import { canManageUsers } from '../utils/roles'
+import {
+  canStartGeneralChat,
+  canStartLawyerChat,
+  isAdmin,
+  isClient,
+  isLawyer,
+  isStaff,
+} from '../utils/roles'
+
+const CHAT_TYPES = {
+  GENERAL: 'GENERAL',
+  LAWYER: 'LAWYER',
+}
 
 const PROFILE_CONTACT_KEYS = [
   'lawyer',
@@ -17,6 +30,14 @@ const PROFILE_CONTACT_KEYS = [
 ]
 
 const PROFILE_CONTACT_LIST_KEYS = ['lawyers', 'contacts', 'supportContacts']
+
+function isChatEligibleUser(entity) {
+  const isActive = typeof entity?.active === 'boolean' ? entity.active : true
+  const isEmailVerified =
+    typeof entity?.emailVerified === 'boolean' ? entity.emailVerified : true
+
+  return isActive && isEmailVerified
+}
 
 function createContact(entity, fallbackLabel = 'Contato') {
   const id = getEntityId(entity)
@@ -35,7 +56,19 @@ function createContact(entity, fallbackLabel = 'Contato') {
       `${fallbackLabel} ${id.slice(0, 8)}`,
     email: entity?.email || '',
     role: entity?.role || '',
+    active: entity?.active,
+    emailVerified: entity?.emailVerified,
   }
+}
+
+function dedupeById(items) {
+  const map = new Map()
+
+  items.filter(Boolean).forEach((item) => {
+    map.set(item.id, item)
+  })
+
+  return Array.from(map.values())
 }
 
 function extractProfileContacts(user) {
@@ -46,17 +79,144 @@ function extractProfileContacts(user) {
     ),
   ]
 
-  const contactsMap = new Map()
+  return dedupeById(candidates).filter(isChatEligibleUser)
+}
 
-  candidates.filter(Boolean).forEach((contact) => {
-    contactsMap.set(contact.id, contact)
-  })
+function getConversationId(conversation) {
+  return conversation?.conversationId || conversation?.id || conversation?._id || ''
+}
 
-  return Array.from(contactsMap.values())
+function getConversationType(conversation) {
+  return conversation?.type || conversation?.conversationType || CHAT_TYPES.GENERAL
+}
+
+function getConversationClientId(conversation) {
+  return (
+    conversation?.clientUserId ||
+    conversation?.clientId ||
+    getEntityId(conversation?.clientUser) ||
+    getEntityId(conversation?.client) ||
+    ''
+  )
+}
+
+function getConversationLawyerId(conversation) {
+  return (
+    conversation?.lawyerUserId ||
+    conversation?.lawyerId ||
+    getEntityId(conversation?.lawyerUser) ||
+    getEntityId(conversation?.lawyer) ||
+    ''
+  )
+}
+
+function getConversationParticipants(conversation) {
+  return dedupeById([
+    ...asArray(conversation?.participants).map((participant) =>
+      createContact(participant, 'Contato'),
+    ),
+    createContact(conversation?.clientUser || conversation?.client, 'Cliente'),
+    createContact(conversation?.lawyerUser || conversation?.lawyer, 'Advogado'),
+    createContact(conversation?.staffUser || conversation?.staff, 'Atendimento'),
+    createContact(conversation?.adminUser || conversation?.admin, 'Administracao'),
+    createContact(conversation?.user, 'Contato'),
+  ])
+}
+
+function getConversationCounterpart(conversation, currentUserId) {
+  const participants = getConversationParticipants(conversation)
+
+  return participants.find((participant) => participant.id !== currentUserId) || participants[0] || null
+}
+
+function getConversationTitle(conversation, role, currentUserId) {
+  const counterpart = getConversationCounterpart(conversation, currentUserId)
+  const type = getConversationType(conversation)
+
+  if (conversation?.title) {
+    return conversation.title
+  }
+
+  if (type === CHAT_TYPES.GENERAL) {
+    return isClient(role) ? 'Atendimento geral' : counterpart?.name || 'Atendimento geral'
+  }
+
+  if (type === CHAT_TYPES.LAWYER) {
+    if (isLawyer(role)) {
+      return counterpart?.name || 'Cliente'
+    }
+
+    return counterpart?.name || 'Advogado responsavel'
+  }
+
+  return counterpart?.name || 'Conversa'
+}
+
+function normalizeConversation(conversation, currentUserId, role) {
+  const id = getConversationId(conversation)
+
+  if (!id) {
+    return null
+  }
+
+  const type = getConversationType(conversation)
+  const counterpart = getConversationCounterpart(conversation, currentUserId)
+
+  return {
+    id,
+    type,
+    title: getConversationTitle(conversation, role, currentUserId),
+    subtitle:
+      type === CHAT_TYPES.LAWYER ? 'Canal juridico' : 'Canal geral',
+    counterpart,
+    clientUserId: getConversationClientId(conversation),
+    lawyerUserId: getConversationLawyerId(conversation),
+    raw: conversation,
+  }
+}
+
+function extractConversationList(data, currentUserId, role) {
+  return asArray(data?.conversations || data)
+    .map((conversation) => normalizeConversation(conversation, currentUserId, role))
+    .filter(Boolean)
+}
+
+function upsertConversation(conversations, nextConversation) {
+  const map = new Map(conversations.map((conversation) => [conversation.id, conversation]))
+
+  map.set(nextConversation.id, nextConversation)
+
+  return Array.from(map.values())
+}
+
+function getMessageSenderId(message) {
+  return (
+    message?.senderId ||
+    message?.senderUserId ||
+    getEntityId(message?.sender) ||
+    getEntityId(message?.user) ||
+    ''
+  )
+}
+
+function extractMessages(data) {
+  if (Array.isArray(data)) {
+    return data
+  }
+
+  if (Array.isArray(data?.messages)) {
+    return data.messages
+  }
+
+  if (Array.isArray(data?.items)) {
+    return data.items
+  }
+
+  return []
 }
 
 function normalizeMessages(messages) {
-  return asArray(messages)
+  return extractMessages(messages)
     .filter(Boolean)
     .sort((left, right) => {
       const leftTime = new Date(left?.createdAt || 0).getTime()
@@ -70,8 +230,7 @@ function mergeMessages(currentMessages, incomingMessages) {
 
   normalizeMessages([...currentMessages, ...incomingMessages]).forEach((message) => {
     const fallbackId = [
-      message?.senderId || '',
-      message?.recipientId || '',
+      getMessageSenderId(message),
       message?.createdAt || '',
       message?.content || '',
     ].join(':')
@@ -106,173 +265,228 @@ function formatMessageTime(value) {
 }
 
 function ChatPage() {
-  const { role, token, user } = useAuth()
+  const { role, user } = useAuth()
   const currentUserId = getEntityId(user)
-  const canLoadUsers = canManageUsers(role)
-  const streamRef = useRef(null)
-  const [contacts, setContacts] = useState([])
-  const [selectedUserId, setSelectedUserId] = useState(null)
-  const [manualRecipientId, setManualRecipientId] = useState('')
+  const canUseChat = isChatEligibleUser(user)
+  const canSearchClients = isAdmin(role) || isStaff(role) || isLawyer(role)
+  const canResolveGeneral = canUseChat && canStartGeneralChat(role)
+  const canResolveLawyer = canUseChat && canStartLawyerChat(role)
+  const [conversations, setConversations] = useState([])
+  const [selectedConversationId, setSelectedConversationId] = useState(null)
   const [messages, setMessages] = useState([])
   const [messageText, setMessageText] = useState('')
-  const [contactsState, setContactsState] = useState({ loading: true, error: '' })
-  const [conversationState, setConversationState] = useState({ loading: false, error: '' })
+  const [conversationListState, setConversationListState] = useState({
+    loading: true,
+    error: '',
+  })
+  const [conversationState, setConversationState] = useState({
+    loading: false,
+    error: '',
+  })
   const [sendState, setSendState] = useState({ loading: false, error: '' })
-  const [streamState, setStreamState] = useState({ connected: false, error: '' })
+  const [resolveState, setResolveState] = useState({ loading: false, error: '' })
+  const [clientSearch, setClientSearch] = useState('')
+  const [clientOptions, setClientOptions] = useState([])
+  const [selectedClient, setSelectedClient] = useState(null)
+  const [clientSearchState, setClientSearchState] = useState({
+    loading: false,
+    error: '',
+  })
 
-  const availableContacts = useMemo(() => {
-    const combined = [...contacts, ...extractProfileContacts(user)]
-    const uniqueContacts = new Map()
-
-    combined.forEach((contact) => {
-      if (!contact?.id || contact.id === currentUserId) {
-        return
-      }
-
-      uniqueContacts.set(contact.id, contact)
-    })
-
-    return Array.from(uniqueContacts.values())
-  }, [contacts, currentUserId, user])
-
-  const selectedContact = useMemo(
+  const profileContacts = useMemo(
+    () => extractProfileContacts(user).filter((contact) => contact.id !== currentUserId),
+    [currentUserId, user],
+  )
+  const lawyerContacts = useMemo(
     () =>
-      availableContacts.find((contact) => contact.id === selectedUserId) ||
-      (selectedUserId
-        ? {
-            id: selectedUserId,
-            name: `Contato ${selectedUserId.slice(0, 8)}`,
-            email: '',
-            role: '',
-          }
-        : null),
-    [availableContacts, selectedUserId],
+      profileContacts.filter((contact) => {
+        const normalizedRole = String(contact.role || '').toUpperCase()
+        return !normalizedRole || normalizedRole === 'LAWYER'
+      }),
+    [profileContacts],
+  )
+  const selectedConversation = useMemo(
+    () =>
+      conversations.find((conversation) => conversation.id === selectedConversationId) || null,
+    [conversations, selectedConversationId],
   )
 
   useEffect(() => {
-    async function loadContacts() {
-      if (!canLoadUsers) {
-        setContactsState({ loading: false, error: '' })
+    async function loadConversations() {
+      if (!canUseChat) {
+        setConversations([])
+        setConversationListState({ loading: false, error: '' })
         return
       }
 
-      setContactsState({ loading: true, error: '' })
+      setConversationListState({ loading: true, error: '' })
 
       try {
-        const response = await userService.list()
-        const items = asArray(response?.users || response)
-          .map((item) => createContact(item, 'Usuario'))
-          .filter(Boolean)
-        setContacts(items)
-        setContactsState({ loading: false, error: '' })
+        const response = await chatService.listConversations()
+        const items = extractConversationList(response, currentUserId, role)
+        setConversations(items)
+        setConversationListState({ loading: false, error: '' })
       } catch (error) {
-        setContactsState({ loading: false, error: getErrorMessage(error) })
+        setConversations([])
+        setConversationListState({
+          loading: false,
+          error: getErrorMessage(error, 'Nao foi possivel carregar as conversas agora.'),
+        })
       }
     }
 
-    loadContacts()
-  }, [canLoadUsers])
+    loadConversations()
+  }, [canUseChat, currentUserId, role])
 
   useEffect(() => {
-    if (!selectedUserId && availableContacts.length) {
-      setSelectedUserId(availableContacts[0].id)
+    if (!selectedConversationId && conversations.length) {
+      setSelectedConversationId(conversations[0].id)
+      return
     }
-  }, [availableContacts, selectedUserId])
+
+    if (
+      selectedConversationId &&
+      !conversations.some((conversation) => conversation.id === selectedConversationId)
+    ) {
+      setSelectedConversationId(conversations[0]?.id || null)
+    }
+  }, [conversations, selectedConversationId])
 
   useEffect(() => {
-    async function loadConversation() {
-      if (!selectedUserId) {
+    async function loadMessages() {
+      if (!selectedConversationId) {
         setMessages([])
+        setConversationState({ loading: false, error: '' })
         return
       }
 
       setConversationState({ loading: true, error: '' })
 
       try {
-        const data = await chatService.getConversation(selectedUserId)
-        setMessages(normalizeMessages(data?.messages))
+        const data = await chatService.getMessages(selectedConversationId)
+        setMessages(normalizeMessages(data))
         setConversationState({ loading: false, error: '' })
       } catch (error) {
         setMessages([])
-        setConversationState({ loading: false, error: getErrorMessage(error) })
+        setConversationState({
+          loading: false,
+          error: getErrorMessage(error, 'Nao foi possivel carregar as mensagens agora.'),
+        })
       }
     }
 
-    loadConversation()
-  }, [selectedUserId])
+    loadMessages()
+  }, [selectedConversationId])
 
-  useEffect(() => {
-    if (streamRef.current) {
-      streamRef.current.close()
-      streamRef.current = null
-    }
-
-    if (!selectedUserId || !token) {
-      setStreamState({ connected: false, error: '' })
-      return undefined
-    }
-
-    const stream = chatService.createStream({ token, recipientId: selectedUserId })
-    streamRef.current = stream
-    setStreamState({ connected: false, error: '' })
-
-    stream.onopen = () => {
-      setStreamState({ connected: true, error: '' })
-    }
-
-    stream.addEventListener('chat.message', (event) => {
-      try {
-        const message = JSON.parse(event.data)
-        setMessages((current) => mergeMessages(current, [message]))
-      } catch {
-        setStreamState((current) => ({
-          ...current,
-          error: 'Nao foi possivel atualizar a conversa em tempo real.',
-        }))
-      }
-    })
-
-    stream.onerror = () => {
-      setStreamState({ connected: false, error: 'Conexao em tempo real indisponivel no momento.' })
-    }
-
-    return () => {
-      stream.close()
-      if (streamRef.current === stream) {
-        streamRef.current = null
-      }
-    }
-  }, [selectedUserId, token])
-
-  const handleSelectContact = (contactId) => {
-    setSelectedUserId(contactId)
-    setMessageText('')
-    setSendState({ loading: false, error: '' })
-  }
-
-  const handleManualConversation = (event) => {
+  const handleClientSearch = async (event) => {
     event.preventDefault()
-    const nextRecipientId = manualRecipientId.trim()
 
-    if (!nextRecipientId) {
+    if (!clientSearch.trim()) {
+      setClientOptions([])
+      setSelectedClient(null)
       return
     }
 
-    setSelectedUserId(nextRecipientId)
+    setClientSearchState({ loading: true, error: '' })
+
+    try {
+      const data = await userService.listClients({ query: clientSearch, active: 'active' })
+      const items = asArray(data).filter(isChatEligibleUser)
+      setClientOptions(items)
+      setSelectedClient(null)
+      setClientSearchState({ loading: false, error: '' })
+    } catch (error) {
+      setClientOptions([])
+      setSelectedClient(null)
+      setClientSearchState({
+        loading: false,
+        error: getErrorMessage(error, 'Nao foi possivel localizar clientes agora.'),
+      })
+    }
+  }
+
+  const handleSelectConversation = (conversationId) => {
+    setSelectedConversationId(conversationId)
+    setMessageText('')
+    setSendState({ loading: false, error: '' })
+    setResolveState({ loading: false, error: '' })
+  }
+
+  const handleResolveConversation = async (payload) => {
+    setResolveState({ loading: true, error: '' })
+
+    try {
+      const response = await chatService.resolveConversation(payload)
+      const nextConversation = normalizeConversation(
+        response?.conversation || response,
+        currentUserId,
+        role,
+      )
+
+      if (!nextConversation) {
+        throw new Error('resolve-conversation')
+      }
+
+      setConversations((current) => upsertConversation(current, nextConversation))
+      setSelectedConversationId(nextConversation.id)
+      setMessageText('')
+      setClientOptions([])
+      setResolveState({ loading: false, error: '' })
+    } catch (error) {
+      setResolveState({
+        loading: false,
+        error: getErrorMessage(error, 'Nao foi possivel abrir a conversa agora.'),
+      })
+    }
+  }
+
+  const handleResolveGeneralConversation = async () => {
+    const clientUserId = isClient(role) ? currentUserId : getEntityId(selectedClient)
+
+    if (!clientUserId) {
+      setResolveState({
+        loading: false,
+        error: 'Selecione um cliente para abrir o atendimento.',
+      })
+      return
+    }
+
+    await handleResolveConversation({
+      type: CHAT_TYPES.GENERAL,
+      clientUserId,
+    })
+  }
+
+  const handleResolveLawyerConversation = async (lawyerUserIdOverride) => {
+    const clientUserId = isClient(role) ? currentUserId : getEntityId(selectedClient)
+    const lawyerUserId = lawyerUserIdOverride || currentUserId
+
+    if (!clientUserId || !lawyerUserId) {
+      setResolveState({
+        loading: false,
+        error: 'Nao foi possivel identificar os participantes desta conversa.',
+      })
+      return
+    }
+
+    await handleResolveConversation({
+      type: CHAT_TYPES.LAWYER,
+      clientUserId,
+      lawyerUserId,
+    })
   }
 
   const handleSendMessage = async (event) => {
     event.preventDefault()
 
-    if (!selectedUserId || !messageText.trim()) {
+    if (!selectedConversationId || !messageText.trim()) {
       return
     }
 
     setSendState({ loading: true, error: '' })
 
     try {
-      const response = await chatService.sendMessage({
-        recipientId: selectedUserId,
+      const response = await chatService.sendMessage(selectedConversationId, {
         content: messageText.trim(),
       })
 
@@ -290,16 +504,22 @@ function ChatPage() {
       setMessageText('')
       setSendState({ loading: false, error: '' })
     } catch (error) {
-      setSendState({ loading: false, error: getErrorMessage(error) })
+      setSendState({
+        loading: false,
+        error: getErrorMessage(error, 'Nao foi possivel enviar a mensagem agora.'),
+      })
     }
   }
+
+  const selectedConversationTypeLabel =
+    selectedConversation?.type === CHAT_TYPES.LAWYER ? 'Conversa juridica' : 'Atendimento geral'
 
   return (
     <section className="page-section">
       <PageHeader
         eyebrow="Chat"
         title="Mensagens"
-        description="Converse com outro usuario autenticado, acompanhe o historico e receba novas mensagens em tempo real."
+        description="Acesse suas conversas, abra um canal permitido para o seu perfil e acompanhe o historico das mensagens."
       />
 
       <div className="chat-shell">
@@ -307,49 +527,159 @@ function ChatPage() {
           <div className="section-inline-header">
             <div>
               <p className="eyebrow">Conversas</p>
-              <h4>Destinatarios</h4>
+              <h4>Canais disponiveis</h4>
             </div>
-            <span className="muted">{availableContacts.length} contato(s)</span>
+            <span className="muted">{conversations.length} conversa(s)</span>
           </div>
 
-          {!canLoadUsers ? (
-            <form className="stack-form compact-top" onSubmit={handleManualConversation}>
-              <label>
-                Id do destinatario
-                <input
-                  value={manualRecipientId}
-                  onChange={(event) => setManualRecipientId(event.target.value)}
-                  placeholder="Cole aqui o id do outro usuario"
-                />
-              </label>
-              <button type="submit" className="secondary-button">
-                Abrir conversa
-              </button>
-              <p className="muted">
-                Seu perfil nao carrega a lista completa de usuarios. Informe o id do contato para abrir a conversa.
-              </p>
-            </form>
+          {!canUseChat ? (
+            <p className="form-error compact-top">
+              Sua conta precisa estar ativa e com email confirmado para usar o chat.
+            </p>
           ) : null}
 
-          {contactsState.error ? <p className="form-error compact-top">{contactsState.error}</p> : null}
-          {contactsState.loading ? <p className="muted compact-top">Carregando contatos...</p> : null}
-
-          {availableContacts.length ? (
-            <div className="chat-contact-list compact-top">
-              {availableContacts.map((contact) => (
+          {canUseChat && isClient(role) ? (
+            <div className="stack-form compact-top">
+              {canResolveGeneral ? (
                 <button
-                  key={contact.id}
                   type="button"
-                  className={`chat-contact-card ${selectedUserId === contact.id ? 'active' : ''}`}
-                  onClick={() => handleSelectContact(contact.id)}
+                  className="secondary-button"
+                  onClick={handleResolveGeneralConversation}
+                  disabled={resolveState.loading}
                 >
-                  <strong>{contact.name}</strong>
-                  <span>{contact.email || contact.role || contact.id}</span>
+                  {resolveState.loading ? 'Abrindo...' : 'Atendimento geral'}
+                </button>
+              ) : null}
+
+              {canResolveLawyer ? (
+                lawyerContacts.length ? (
+                  lawyerContacts.map((contact) => (
+                    <button
+                      key={contact.id}
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => handleResolveLawyerConversation(contact.id)}
+                      disabled={resolveState.loading}
+                    >
+                      Conversar com {contact.name}
+                    </button>
+                  ))
+                ) : (
+                  <p className="muted">
+                    Nenhum advogado elegivel foi identificado no seu perfil para abrir conversa juridica.
+                  </p>
+                )
+              ) : null}
+            </div>
+          ) : null}
+
+          {canUseChat && canSearchClients ? (
+            <div className="compact-top">
+              <form className="search-grid" onSubmit={handleClientSearch}>
+                <label className="full-span">
+                  Buscar cliente
+                  <input
+                    value={clientSearch}
+                    onChange={(event) => setClientSearch(event.target.value)}
+                    placeholder="Digite CPF, nome, email ou telefone"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  className="secondary-button"
+                  disabled={clientSearchState.loading}
+                >
+                  {clientSearchState.loading ? 'Buscando...' : 'Buscar cliente'}
+                </button>
+              </form>
+
+              {clientSearchState.error ? (
+                <p className="form-error compact-top">{clientSearchState.error}</p>
+              ) : null}
+
+              {selectedClient ? (
+                <div className="selected-client compact-top">
+                  <strong>{selectedClient.name || 'Cliente selecionado'}</strong>
+                  <span>{formatCpf(selectedClient.cpf) || 'CPF nao informado'}</span>
+                  <span>{selectedClient.email || 'Email nao informado'}</span>
+                </div>
+              ) : null}
+
+              {clientOptions.length ? (
+                <div className="client-results compact-top">
+                  {clientOptions.map((client) => (
+                    <button
+                      key={getEntityId(client)}
+                      type="button"
+                      className={`client-option ${
+                        getEntityId(selectedClient) === getEntityId(client) ? 'active' : ''
+                      }`}
+                      onClick={() => setSelectedClient(client)}
+                    >
+                      <strong>{client.name || 'Cliente sem nome'}</strong>
+                      <span>{formatCpf(client.cpf) || 'CPF nao informado'}</span>
+                      <small>{client.email || client.phone || 'Sem contato cadastrado'}</small>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              {selectedClient ? (
+                <div className="quick-actions compact-top">
+                  {(isAdmin(role) || isStaff(role)) && canResolveGeneral ? (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={handleResolveGeneralConversation}
+                      disabled={resolveState.loading}
+                    >
+                      {resolveState.loading ? 'Abrindo...' : 'Abrir atendimento geral'}
+                    </button>
+                  ) : null}
+
+                  {isLawyer(role) && canResolveLawyer ? (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => handleResolveLawyerConversation(currentUserId)}
+                      disabled={resolveState.loading}
+                    >
+                      {resolveState.loading ? 'Abrindo...' : 'Abrir conversa juridica'}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {resolveState.error ? <p className="form-error compact-top">{resolveState.error}</p> : null}
+          {conversationListState.error ? (
+            <p className="form-error compact-top">{conversationListState.error}</p>
+          ) : null}
+          {conversationListState.loading ? (
+            <p className="muted compact-top">Carregando conversas...</p>
+          ) : null}
+
+          {conversations.length ? (
+            <div className="chat-contact-list compact-top">
+              {conversations.map((conversation) => (
+                <button
+                  key={conversation.id}
+                  type="button"
+                  className={`chat-contact-card ${
+                    selectedConversationId === conversation.id ? 'active' : ''
+                  }`}
+                  onClick={() => handleSelectConversation(conversation.id)}
+                >
+                  <strong>{conversation.title}</strong>
+                  <span>{conversation.subtitle}</span>
                 </button>
               ))}
             </div>
-          ) : !contactsState.loading ? (
-            <p className="muted compact-top">Nenhum contato disponivel para iniciar conversa.</p>
+          ) : !conversationListState.loading ? (
+            <p className="muted compact-top">
+              Nenhuma conversa disponivel no momento.
+            </p>
           ) : null}
         </aside>
 
@@ -357,38 +687,52 @@ function ChatPage() {
           <div className="section-inline-header">
             <div>
               <p className="eyebrow">Conversa ativa</p>
-              <h4>{selectedContact?.name || 'Selecione um contato'}</h4>
+              <h4>{selectedConversation?.title || 'Selecione uma conversa'}</h4>
             </div>
-            <span className={`status-pill ${streamState.connected ? 'on' : 'neutral'}`}>
-              {streamState.connected ? 'Ao vivo' : 'Sem stream'}
+            <span className={`status-pill ${selectedConversation ? 'on' : 'neutral'}`}>
+              {selectedConversation ? selectedConversationTypeLabel : 'Sem conversa'}
             </span>
           </div>
 
-          {selectedContact ? (
+          {selectedConversation ? (
             <div className="read-only-list compact-top">
               <div>
-                <span>Destinatario</span>
-                <strong>{selectedContact.name}</strong>
+                <span>Canal</span>
+                <strong>{selectedConversation.subtitle}</strong>
               </div>
+              {selectedConversation.counterpart ? (
+                <div>
+                  <span>Contato</span>
+                  <strong>{selectedConversation.counterpart.name}</strong>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
-          {conversationState.error ? <p className="form-error compact-top">{conversationState.error}</p> : null}
-          {streamState.error ? <p className="form-error compact-top">{streamState.error}</p> : null}
+          {conversationState.error ? (
+            <p className="form-error compact-top">{conversationState.error}</p>
+          ) : null}
 
           <div className="chat-message-list compact-top">
             {conversationState.loading ? (
               <p className="muted">Carregando mensagens...</p>
             ) : messages.length ? (
               messages.map((message) => {
-                const isOwnMessage = message?.senderId === currentUserId
+                const isOwnMessage = getMessageSenderId(message) === currentUserId
 
                 return (
                   <div
-                    key={message?.id || `${message?.senderId}-${message?.createdAt}-${message?.content}`}
+                    key={
+                      message?.id ||
+                      `${getMessageSenderId(message)}-${message?.createdAt}-${message?.content}`
+                    }
                     className={`chat-message ${isOwnMessage ? 'own' : ''}`}
                   >
-                    <strong>{isOwnMessage ? 'Voce' : selectedContact?.name || 'Contato'}</strong>
+                    <strong>
+                      {isOwnMessage
+                        ? 'Voce'
+                        : selectedConversation?.counterpart?.name || 'Contato'}
+                    </strong>
                     <p>{message?.content || '-'}</p>
                     <span>{formatMessageTime(message?.createdAt)}</span>
                   </div>
@@ -396,9 +740,9 @@ function ChatPage() {
               })
             ) : (
               <p className="muted">
-                {selectedUserId
+                {selectedConversationId
                   ? 'Nenhuma mensagem encontrada para esta conversa.'
-                  : 'Escolha um destinatario para carregar o historico.'}
+                  : 'Escolha ou abra uma conversa para carregar o historico.'}
               </p>
             )}
           </div>
@@ -411,14 +755,14 @@ function ChatPage() {
                 value={messageText}
                 onChange={(event) => setMessageText(event.target.value)}
                 placeholder="Digite sua mensagem"
-                disabled={!selectedUserId || sendState.loading}
+                disabled={!selectedConversationId || sendState.loading || !canUseChat}
               />
             </label>
             {sendState.error ? <p className="form-error full-span">{sendState.error}</p> : null}
             <button
               type="submit"
               className="primary-button"
-              disabled={!selectedUserId || !messageText.trim() || sendState.loading}
+              disabled={!selectedConversationId || !messageText.trim() || sendState.loading || !canUseChat}
             >
               {sendState.loading ? 'Enviando...' : 'Enviar mensagem'}
             </button>

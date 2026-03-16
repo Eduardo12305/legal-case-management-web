@@ -1,24 +1,24 @@
 import http from './http'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'
-
 const chatService = {
-  getConversation: async (userId) => {
-    const { data } = await http.get(`/api/chat/conversation/${userId}`)
+  listConversations: async () => {
+    const { data } = await http.get('/api/chat/conversations')
     return data
   },
 
-  sendMessage: async (payload) => {
-    const { data } = await http.post('/api/chat', payload)
+  resolveConversation: async (payload) => {
+    const { data } = await http.post('/api/chat/conversations/resolve', payload)
     return data
   },
 
-  createStream: ({ token, recipientId }) => {
-    const streamUrl = new URL('/api/chat/stream', API_BASE_URL)
-    streamUrl.searchParams.set('token', token)
-    streamUrl.searchParams.set('recipientId', recipientId)
+  getMessages: async (conversationId) => {
+    const { data } = await http.get(`/api/chat/conversations/${conversationId}/messages`)
+    return data
+  },
 
-    return new EventSource(streamUrl.toString())
+  sendMessage: async (conversationId, payload) => {
+    const { data } = await http.post(`/api/chat/conversations/${conversationId}/messages`, payload)
+    return data
   },
 }
 

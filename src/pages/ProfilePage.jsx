@@ -41,7 +41,11 @@ function ProfilePage() {
       await refreshProfile()
       setStatus({ loading: false, error: '', success: 'Perfil atualizado com sucesso.' })
     } catch (error) {
-      setStatus({ loading: false, error: getErrorMessage(error), success: '' })
+      setStatus({
+        loading: false,
+        error: getErrorMessage(error, 'Nao foi possivel atualizar o perfil agora.'),
+        success: '',
+      })
     }
   }
 

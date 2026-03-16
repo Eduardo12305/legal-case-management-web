@@ -47,7 +47,10 @@ function ProcessFormPage() {
       setForm((current) => ({ ...current, clientId: '' }))
       setClientStatus({ loading: false, error: '' })
     } catch (error) {
-      setClientStatus({ loading: false, error: getErrorMessage(error) })
+      setClientStatus({
+        loading: false,
+        error: getErrorMessage(error, 'Nao foi possivel localizar o cliente informado.'),
+      })
       setClientOptions([])
     }
   }
@@ -88,7 +91,11 @@ function ProcessFormPage() {
         navigate('/processes', { replace: true })
       }, 700)
     } catch (error) {
-      setStatus({ loading: false, error: getErrorMessage(error), success: '' })
+      setStatus({
+        loading: false,
+        error: getErrorMessage(error, 'Nao foi possivel cadastrar o processo agora.'),
+        success: '',
+      })
     }
   }
 

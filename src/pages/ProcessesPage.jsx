@@ -27,7 +27,7 @@ function ProcessesPage() {
       setProcesses(asArray(data))
       setStatus({ loading: false, error: '' })
     } catch (error) {
-      setStatus({ loading: false, error: getErrorMessage(error) })
+      setStatus({ loading: false, error: getErrorMessage(error, 'Nao foi possivel carregar os processos agora.') })
     }
   }, [])
 
@@ -44,7 +44,10 @@ function ProcessesPage() {
       setClientOptions(asArray(data))
       setClientStatus({ loading: false, error: '' })
     } catch (error) {
-      setClientStatus({ loading: false, error: getErrorMessage(error) })
+      setClientStatus({
+        loading: false,
+        error: getErrorMessage(error, 'Nao foi possivel buscar clientes agora.'),
+      })
       setClientOptions([])
     }
   }

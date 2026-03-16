@@ -18,7 +18,10 @@ function MyProcessesPage() {
         setProcesses(items)
         setStatus({ loading: false, error: '' })
       } catch (error) {
-        setStatus({ loading: false, error: getErrorMessage(error) })
+        setStatus({
+          loading: false,
+          error: getErrorMessage(error, 'Nao foi possivel carregar seus processos agora.'),
+        })
       }
     }
 

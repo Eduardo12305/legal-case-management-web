@@ -55,7 +55,11 @@ function UsersPage() {
       })
       setStatus({ loading: false, error: '', searchLoading: false })
     } catch (error) {
-      setStatus({ loading: false, error: getErrorMessage(error), searchLoading: false })
+      setStatus({
+        loading: false,
+        error: getErrorMessage(error, 'Nao foi possivel carregar os usuarios agora.'),
+        searchLoading: false,
+      })
     }
   }, [])
 
@@ -68,7 +72,11 @@ function UsersPage() {
       await userService.toggleActive(userId)
       await loadUsers()
     } catch (error) {
-      setStatus((current) => ({ ...current, loading: false, error: getErrorMessage(error) }))
+      setStatus((current) => ({
+        ...current,
+        loading: false,
+        error: getErrorMessage(error, 'Nao foi possivel atualizar o usuario agora.'),
+      }))
     }
   }
 
@@ -77,7 +85,11 @@ function UsersPage() {
       await userService.updateStaffPermissions(userId, { canManageProcesses: true })
       await loadUsers()
     } catch (error) {
-      setStatus((current) => ({ ...current, loading: false, error: getErrorMessage(error) }))
+      setStatus((current) => ({
+        ...current,
+        loading: false,
+        error: getErrorMessage(error, 'Nao foi possivel atualizar as permissoes agora.'),
+      }))
     }
   }
 
@@ -93,7 +105,7 @@ function UsersPage() {
       setStatus((current) => ({
         ...current,
         searchLoading: false,
-        error: getErrorMessage(error),
+        error: getErrorMessage(error, 'Nao foi possivel buscar clientes agora.'),
       }))
     }
   }
@@ -104,7 +116,10 @@ function UsersPage() {
       const data = await userService.listClients(filters)
       setClients(asArray(data))
     } catch (error) {
-      setStatus((current) => ({ ...current, error: getErrorMessage(error) }))
+      setStatus((current) => ({
+        ...current,
+        error: getErrorMessage(error, 'Nao foi possivel atualizar o cliente agora.'),
+      }))
     }
   }
 
@@ -180,7 +195,11 @@ function UsersPage() {
       setInviteForm(INITIAL_INVITE_FORM)
       await loadUsers()
     } catch (error) {
-      setInviteStatus({ loading: false, error: getErrorMessage(error), success: '' })
+      setInviteStatus({
+        loading: false,
+        error: getErrorMessage(error, 'Nao foi possivel concluir o cadastro agora.'),
+        success: '',
+      })
     }
   }
 

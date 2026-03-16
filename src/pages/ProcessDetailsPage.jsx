@@ -94,7 +94,7 @@ function ProcessDetailsPage() {
       } catch (error) {
         setViewState({
           loading: false,
-          error: getErrorMessage(error),
+          error: getErrorMessage(error, 'Nao foi possivel carregar os detalhes do processo.'),
           success: '',
         })
       }
@@ -115,9 +115,6 @@ function ProcessDetailsPage() {
     [process?.updates],
   )
   const canEditProcess = canEditProcessContent(role)
-  const readOnlyMessage = isClient(role)
-    ? 'Seu acesso permite acompanhar este processo, documentos e andamentos em modo de consulta.'
-    : 'Seu perfil esta em modo de consulta e pesquisa. Edicoes, documentos e andamentos ficam bloqueados nesta tela.'
 
   const processFields = [
     { label: 'Numero do processo', value: process?.processNumber || process?.number },
@@ -196,7 +193,7 @@ function ProcessDetailsPage() {
     } catch (error) {
       setViewState({
         loading: false,
-        error: getErrorMessage(error),
+        error: getErrorMessage(error, 'Nao foi possivel atualizar o processo agora.'),
         success: '',
       })
     } finally {
@@ -266,7 +263,7 @@ function ProcessDetailsPage() {
     } catch (error) {
       setViewState({
         loading: false,
-        error: getErrorMessage(error),
+        error: getErrorMessage(error, 'Nao foi possivel enviar o documento agora.'),
         success: '',
       })
     } finally {
@@ -304,7 +301,7 @@ function ProcessDetailsPage() {
     } catch (error) {
       setViewState({
         loading: false,
-        error: getErrorMessage(error),
+        error: getErrorMessage(error, 'Nao foi possivel registrar o andamento agora.'),
         success: '',
       })
     } finally {
@@ -359,13 +356,6 @@ function ProcessDetailsPage() {
                 {getDisplayValue(process?.status)}
               </span>
             </div>
-
-            {!canEditProcess ? (
-              <div className="read-only-banner">
-                <strong>Somente consulta</strong>
-                <span>{readOnlyMessage}</span>
-              </div>
-            ) : null}
 
             {isEditing ? (
               <form className="form-grid process-form-grid" onSubmit={handleSaveProcess}>

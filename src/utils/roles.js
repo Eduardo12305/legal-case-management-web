@@ -25,6 +25,10 @@ export function isLawyer(role) {
   return role === ROLES.LAWYER
 }
 
+export function isStaff(role) {
+  return role === ROLES.STAFF
+}
+
 export function canViewProcessesMenu(role) {
   return [ROLES.ADMIN, ROLES.LAWYER].includes(role)
 }
@@ -43,6 +47,14 @@ export function canEditProcessContent(role) {
 
 export function canAccessProcessDetails(role) {
   return [ROLES.ADMIN, ROLES.LAWYER, ROLES.CLIENT].includes(role)
+}
+
+export function canStartGeneralChat(role) {
+  return [ROLES.ADMIN, ROLES.STAFF, ROLES.CLIENT].includes(role)
+}
+
+export function canStartLawyerChat(role) {
+  return [ROLES.CLIENT, ROLES.LAWYER].includes(role)
 }
 
 export function getCreatableRoles(role) {

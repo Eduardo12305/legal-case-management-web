@@ -1,5 +1,7 @@
-export function getErrorMessage(error) {
-  return error?.message || 'Nao foi possivel concluir a operacao.'
+const DEFAULT_ERROR_MESSAGE = 'Nao foi possivel concluir esta etapa agora. Tente novamente em instantes.'
+
+export function getErrorMessage(_error, fallback = DEFAULT_ERROR_MESSAGE) {
+  return fallback
 }
 
 export function asArray(data) {

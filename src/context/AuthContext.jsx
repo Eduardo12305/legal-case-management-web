@@ -79,7 +79,6 @@ export function AuthProvider({ children }) {
       if (requiresPasswordChange && !responseToken) {
         const pendingState = {
           userId: response?.userId,
-          login: credentials?.email,
           email: credentials?.email,
           requiresPasswordChange: true,
           firstLogin: true,
@@ -104,10 +103,19 @@ export function AuthProvider({ children }) {
         }
       }
 
-      setPendingPasswordChange(null)
+      const nextPendingPasswordChange = requiresPasswordChange
+        ? {
+            userId: response?.userId || session?.user?.id,
+            email: credentials?.email,
+            requiresPasswordChange: true,
+            firstLogin: true,
+          }
+        : null
+
+      setPendingPasswordChange(nextPendingPasswordChange)
       startTransition(() => {
         setAuth(session)
-        setStoredAuth({ ...session, pendingPasswordChange: null })
+        setStoredAuth({ ...session, pendingPasswordChange: nextPendingPasswordChange })
       })
 
       if (requiresPasswordChange) {
@@ -136,37 +144,28 @@ export function AuthProvider({ children }) {
     let response
 
     if (pendingPasswordChange?.requiresPasswordChange) {
-      const firstAccessPayload = {
-        login: payload?.login || pendingPasswordChange?.login || pendingPasswordChange?.email,
-        email: payload?.login || pendingPasswordChange?.login || pendingPasswordChange?.email,
-        userId: pendingPasswordChange?.userId,
-        password: payload?.newPassword,
+      response = await authService.changeFirstAccessPassword({
         newPassword: payload?.newPassword,
+      })
+
+      const nextToken = extractToken(response) || auth?.token || null
+      const session = {
+        ...auth,
+        token: nextToken,
       }
 
-      console.log('Primeiro acesso - payload enviado:', firstAccessPayload)
-
-      response = await authService.changeFirstAccessPassword(firstAccessPayload)
-      console.log('Primeiro acesso - resposta da API de troca de senha:', response)
-
-      const session = buildSession(response)
-
-      if (!session.token) {
-        throw new Error('Nao foi possivel concluir o primeiro acesso.')
-      }
-
-      http.setToken(session.token)
-
-      if (!session.user) {
+      if (!session.user && nextToken) {
+        http.setToken(nextToken)
         try {
           const profile = await authService.getProfile()
           session.user = profile
           session.role = normalizeRole(profile?.role)
         } catch {
-          // Some backends may only return the token at this stage.
+          // Some backends may confirm the password change without returning profile data.
         }
       }
 
+      http.setToken(nextToken)
       startTransition(() => {
         setAuth(session)
         setStoredAuth({ ...session, pendingPasswordChange: null })
